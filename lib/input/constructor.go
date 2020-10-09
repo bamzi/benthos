@@ -82,6 +82,7 @@ const (
 	TypeAMQP            = "amqp"
 	TypeAMQP09          = "amqp_0_9"
 	TypeAMQP1           = "amqp_1"
+	TypeAWSS3           = "aws_s3"
 	TypeBloblang        = "bloblang"
 	TypeBroker          = "broker"
 	TypeCSVFile         = "csv"
@@ -129,6 +130,7 @@ type Config struct {
 	AMQP            reader.AMQPConfig            `json:"amqp" yaml:"amqp"`
 	AMQP09          reader.AMQP09Config          `json:"amqp_0_9" yaml:"amqp_0_9"`
 	AMQP1           reader.AMQP1Config           `json:"amqp_1" yaml:"amqp_1"`
+	AWSS3           AWSS3Config                  `json:"aws_s3" yaml:"aws_s3"`
 	Bloblang        BloblangConfig               `json:"bloblang" yaml:"bloblang"`
 	Broker          BrokerConfig                 `json:"broker" yaml:"broker"`
 	CSVFile         CSVFileConfig                `json:"csv" yaml:"csv"`
@@ -177,6 +179,7 @@ func NewConfig() Config {
 		AMQP:            reader.NewAMQPConfig(),
 		AMQP09:          reader.NewAMQP09Config(),
 		AMQP1:           reader.NewAMQP1Config(),
+		AWSS3:           NewAWSS3Config(),
 		Bloblang:        NewBloblangConfig(),
 		Broker:          NewBrokerConfig(),
 		CSVFile:         NewCSVFileConfig(),
