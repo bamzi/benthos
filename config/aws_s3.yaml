@@ -9,6 +9,7 @@ input:
   type: aws_s3
   aws_s3:
     bucket: ""
+    codec: all-bytes
     credentials:
       id: ""
       profile: ""
@@ -25,7 +26,7 @@ input:
     sqs:
       bucket_path: Records.*.s3.bucket.name
       endpoint: ""
-      envelope_path: Message
+      envelope_path: ""
       key_path: Records.*.s3.object.key
       max_messages: 10
       url: ""

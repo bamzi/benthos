@@ -56,6 +56,7 @@ input:
           url: ${INPUT_AMQP_1_URL}
         aws_s3:
           bucket: ${INPUT_AWS_S3_BUCKET}
+          codec: ${INPUT_AWS_S3_CODEC:all-bytes}
           credentials:
             id: ${INPUT_AWS_S3_CREDENTIALS_ID}
             profile: ${INPUT_AWS_S3_CREDENTIALS_PROFILE}
@@ -72,7 +73,7 @@ input:
           sqs:
             bucket_path: ${INPUT_AWS_S3_SQS_BUCKET_PATH:Records.*.s3.bucket.name}
             endpoint: ${INPUT_AWS_S3_SQS_ENDPOINT}
-            envelope_path: ${INPUT_AWS_S3_SQS_ENVELOPE_PATH:Message}
+            envelope_path: ${INPUT_AWS_S3_SQS_ENVELOPE_PATH}
             key_path: ${INPUT_AWS_S3_SQS_KEY_PATH:Records.*.s3.object.key}
             max_messages: ${INPUT_AWS_S3_SQS_MAX_MESSAGES:10}
             url: ${INPUT_AWS_S3_SQS_URL}

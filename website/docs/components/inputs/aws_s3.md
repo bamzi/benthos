@@ -35,11 +35,12 @@ input:
     bucket: ""
     prefix: ""
     region: eu-west-1
+    codec: all-bytes
     sqs:
       url: ""
       key_path: Records.*.s3.object.key
       bucket_path: Records.*.s3.bucket.name
-      envelope_path: Message
+      envelope_path: ""
 ```
 
 </TabItem>
@@ -63,12 +64,13 @@ input:
     retries: 3
     force_path_style_urls: false
     delete_objects: false
+    codec: all-bytes
     sqs:
       url: ""
       endpoint: ""
       key_path: Records.*.s3.object.key
       bucket_path: Records.*.s3.bucket.name
-      envelope_path: Message
+      envelope_path: ""
       max_messages: 10
 ```
 
@@ -77,23 +79,25 @@ input:
 
 If an SQS queue is not specified the entire list of objects found when this input starts will be consumed.
 
-If your bucket is configured to send events directly to an SQS queue then you need to set the `sqs_body_path` field to a [dot path](/docs/configuration/field_paths) where the object key is found in the payload. However, it is also common practice to send bucket events to an SNS topic which sends enveloped events to SQS, in which case you must also set the `sqs_envelope_path` field to where the payload can be found.
+## Downloading Objects on Upload with SQS
 
-When using SQS events it's also possible to extract target bucket names from the events by specifying a path in the field `sqs_bucket_path`. For each SQS event, if that path exists and contains a string it will used as the bucket of the download instead of the `bucket` field.
+A common pattern for consuming S3 objects is to emit upload notification events from the bucket either directly to an SQS queue, or to an SNS topic that is consumed by an SQS queue, and then have your consumer listen for events which prompt it to download the newly uploaded objects. More information about this pattern and how to set it up can be found at: https://docs.aws.amazon.com/AmazonS3/latest/dev/ways-to-add-notification-config-to-bucket.html.
 
-Here is a guide for setting up an SQS queue that receives events for new S3 bucket objects:
+Benthos is able to follow this pattern when you configure an `sqs.url`, where it consumes events from SQS and only downloads object keys received within those events. In order for this to work Benthos needs to know where within the event the key and bucket names can be found, specified as [dot paths](/docs/configuration/field_paths) with the fields `sqs.key_path` and `sqs.bucket_path`. The default values for these fields should already be correct when following the guide above.
 
-https://docs.aws.amazon.com/AmazonS3/latest/dev/ways-to-add-notification-config-to-bucket.html
+If your notification events are being routed to SQS via an SNS topic then the events will be enveloped by SNS, in which case you also need to specify the field `sqs.envelope_path`, which in the case of SNS to SQS will usually be `Message`.
 
-WARNING: When using SQS please make sure you have sensible values for `sqs_max_messages` and also the visibility timeout of the queue itself.
+When using SQS please make sure you have sensible values for `sqs.max_messages` and also the visibility timeout of the queue itself. When Benthos consumes an S3 object the SQS message that triggered it is not deleted until the S3 object has been sent onwards. This ensures at-least-once crash resiliency, but also means that if the S3 object takes longer to process than the visibility timeout of your queue then the same objects might be processed multiple times.
 
-When Benthos consumes an S3 item as a result of receiving an SQS message the message is not deleted until the S3 item has been sent onwards. This ensures at-least-once crash resiliency, but also means that if the S3 item takes longer to process than the visibility timeout of your queue then the same items might be processed multiple times.
+## Downloading Large Files
 
-### Credentials
+When downloading large files it's often necessary to process it in streamed parts in order to avoid loading the entire file in memory at a given time. In order to do this a [`codec`](#codec) can be specified that determines how to break the input into smaller individual messages.
+
+## Credentials
 
 By default Benthos will use a shared credentials file when connecting to AWS services. It's also possible to set them explicitly at the component level, allowing you to transfer data across accounts. You can find out more [in this document](/docs/guides/aws).
 
-### Metadata
+## Metadata
 
 This input adds the following metadata fields to each message:
 
@@ -113,7 +117,7 @@ You can access these metadata fields using [function interpolation](/docs/config
 
 ### `bucket`
 
-The bucket to consume from. If `sqs_bucket_path` is set this field is still required as a fallback.
+The bucket to consume from. If the field `sqs.url` is specified this field is optional.
 
 
 Type: `string`  
@@ -121,7 +125,7 @@ Default: `""`
 
 ### `prefix`
 
-An optional path prefix, if set only objects with the prefix are consumed. This field is ignored when SQS is used.
+An optional path prefix, if set only objects with the prefix are consumed.
 
 
 Type: `string`  
@@ -208,7 +212,7 @@ Default: `3`
 
 ### `force_path_style_urls`
 
-Forces the client API to use path style URLs, which helps when connecting to custom endpoints.
+Forces the client API to use path style URLs for downloading keys, which is often required when connecting to custom endpoints.
 
 
 Type: `bool`  
@@ -216,11 +220,20 @@ Default: `false`
 
 ### `delete_objects`
 
-Whether to delete downloaded objects from the bucket.
+Whether to delete downloaded objects from the bucket once they are processed.
 
 
 Type: `bool`  
 Default: `false`  
+
+### `codec`
+
+The way in which objects are consumed, codecs are useful for specifying how large files might be processed in small chunks rather than loading it all in memory.
+
+
+Type: `string`  
+Default: `"all-bytes"`  
+Options: `all-bytes`, `lines`, `tar`, `tar-gzip`.
 
 ### `sqs`
 
@@ -231,7 +244,7 @@ Type: `object`
 
 ### `sqs.url`
 
-An optional SQS URL to connect to. When specified this queue will control which objects are downloaded from the target bucket.
+An optional SQS URL to connect to. When specified this queue will control which objects are downloaded.
 
 
 Type: `string`  
@@ -247,7 +260,7 @@ Default: `""`
 
 ### `sqs.key_path`
 
-A [dot path](/docs/configuration/field_paths) whereby object keys are found in SQS messages, this field is only required when an `sqs_url` is specified.
+A [dot path](/docs/configuration/field_paths) whereby object keys are found in SQS messages.
 
 
 Type: `string`  
@@ -255,7 +268,7 @@ Default: `"Records.*.s3.object.key"`
 
 ### `sqs.bucket_path`
 
-An optional [dot path](/docs/configuration/field_paths) whereby the bucket of an object can be found in consumed SQS messages.
+A [dot path](/docs/configuration/field_paths) whereby the bucket name can be found in SQS messages.
 
 
 Type: `string`  
@@ -263,11 +276,17 @@ Default: `"Records.*.s3.bucket.name"`
 
 ### `sqs.envelope_path`
 
-An optional [dot path](/docs/configuration/field_paths) of enveloped payloads to extract from SQS messages. This is required when pushing events from S3 to SNS to SQS.
+A [dot path](/docs/configuration/field_paths) of a field to extract an enveloped JSON payload for further extracting the key and bucket from SQS messages. This is specifically useful when subscribing an SQS queue to an SNS topic that receives bucket events.
 
 
 Type: `string`  
-Default: `"Message"`  
+Default: `""`  
+
+```yaml
+# Examples
+
+envelope_path: Message
+```
 
 ### `sqs.max_messages`
 
