@@ -18,7 +18,7 @@ import TabItem from '@theme/TabItem';
 BETA: This component is experimental and therefore subject to change outside of
 major version releases.
 
-Downloads objects within an S3 bucket, optionally filtered by a prefix. If an SQS queue has been configured then only object keys read from the queue will be downloaded.
+This input is a refactor of the current stable (and shorter named) [`s3` input](/docs/components/inputs/s3) which is still the recommended one to use until this input is considered stable. However, this input has improved capabilities and will eventually replace it.
 
 
 <Tabs defaultValue="common" values={[
@@ -61,7 +61,6 @@ input:
       token: ""
       role: ""
       role_external_id: ""
-    retries: 3
     force_path_style_urls: false
     delete_objects: false
     codec: all-bytes
@@ -76,6 +75,8 @@ input:
 
 </TabItem>
 </Tabs>
+
+Downloads objects within an S3 bucket, optionally filtered by a prefix. If an SQS queue has been configured then only object keys read from the queue will be downloaded.
 
 If an SQS queue is not specified the entire list of objects found when this input starts will be consumed.
 
@@ -201,14 +202,6 @@ An external ID to provide when assuming a role.
 
 Type: `string`  
 Default: `""`  
-
-### `retries`
-
-The maximum number of times to attempt an object download.
-
-
-Type: `number`  
-Default: `3`  
 
 ### `force_path_style_urls`
 

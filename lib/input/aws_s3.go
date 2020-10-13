@@ -11,6 +11,7 @@ import (
 	"io/ioutil"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -47,8 +48,10 @@ func init() {
 		},
 		Beta: true,
 		Summary: `
-Downloads objects within an S3 bucket, optionally filtered by a prefix. If an SQS queue has been configured then only object keys read from the queue will be downloaded.`,
+This input is a refactor of the current stable (and shorter named) ` + "[`s3` input](/docs/components/inputs/s3)" + ` which is still the recommended one to use until this input is considered stable. However, this input has improved capabilities and will eventually replace it.`,
 		Description: `
+Downloads objects within an S3 bucket, optionally filtered by a prefix. If an SQS queue has been configured then only object keys read from the queue will be downloaded.
+
 If an SQS queue is not specified the entire list of objects found when this input starts will be consumed.
 
 ## Downloading Objects on Upload with SQS
@@ -89,7 +92,6 @@ You can access these metadata fields using [function interpolation](/docs/config
 				docs.FieldCommon("bucket", "The bucket to consume from. If the field `sqs.url` is specified this field is optional."),
 				docs.FieldCommon("prefix", "An optional path prefix, if set only objects with the prefix are consumed."),
 			}, sess.FieldSpecs()...),
-			docs.FieldAdvanced("retries", "The maximum number of times to attempt an object download."),
 			docs.FieldAdvanced("force_path_style_urls", "Forces the client API to use path style URLs for downloading keys, which is often required when connecting to custom endpoints."),
 			docs.FieldAdvanced("delete_objects", "Whether to delete downloaded objects from the bucket once they are processed."),
 			docs.FieldCommon(
@@ -141,7 +143,6 @@ type AWSS3Config struct {
 	Bucket             string         `json:"bucket" yaml:"bucket"`
 	Codec              string         `json:"codec" yaml:"codec"`
 	Prefix             string         `json:"prefix" yaml:"prefix"`
-	Retries            int            `json:"retries" yaml:"retries"`
 	ForcePathStyleURLs bool           `json:"force_path_style_urls" yaml:"force_path_style_urls"`
 	DeleteObjects      bool           `json:"delete_objects" yaml:"delete_objects"`
 	SQS                AWSS3SQSConfig `json:"sqs" yaml:"sqs"`
@@ -154,7 +155,6 @@ func NewAWSS3Config() AWSS3Config {
 		Bucket:             "",
 		Prefix:             "",
 		Codec:              "all-bytes",
-		Retries:            3,
 		ForcePathStyleURLs: false,
 		DeleteObjects:      false,
 		SQS:                NewAWSS3SQSConfig(),
@@ -794,40 +794,48 @@ func (a *awsS3) getObjectTarget(ctx context.Context) (*pendingObject, error) {
 }
 
 // ReadWithContext attempts to read a new message from the target S3 bucket.
-func (a *awsS3) ReadWithContext(ctx context.Context) (types.Message, reader.AsyncAckFn, error) {
+func (a *awsS3) ReadWithContext(ctx context.Context) (msg types.Message, ackFn reader.AsyncAckFn, err error) {
 	a.objectMut.Lock()
 	defer a.objectMut.Unlock()
 	if a.session == nil {
 		return nil, nil, types.ErrNotConnected
 	}
 
-	object, err := a.getObjectTarget(ctx)
-	if err != nil {
-		return nil, nil, err
+	defer func() {
+		if errors.Is(err, context.Canceled) ||
+			errors.Is(err, context.DeadlineExceeded) ||
+			(err != nil && strings.HasSuffix(err.Error(), "context canceled")) {
+			err = types.ErrTimeout
+		}
+	}()
+
+	var object *pendingObject
+	if object, err = a.getObjectTarget(ctx); err != nil {
+		return
 	}
 
 	var b []byte
-	var ackFn scannerAckFn
+	var scnAckFn scannerAckFn
 
 scanLoop:
 	for {
-		if b, ackFn, err = object.scanner.Next(ctx); err == nil {
+		if b, scnAckFn, err = object.scanner.Next(ctx); err == nil {
 			break scanLoop
 		}
 		a.object = nil
 		if err != io.EOF {
-			return nil, nil, err
+			return
 		}
 		if err = object.scanner.Close(ctx); err != nil {
 			a.log.Warnf("Failed to close bucket object scanner cleanly: %v\n", err)
 		}
 		if object, err = a.getObjectTarget(ctx); err != nil {
-			return nil, nil, err
+			return
 		}
 	}
 
 	return msgFromBytes(object, b), func(rctx context.Context, res types.Response) error {
-		return ackFn(rctx, res.Error())
+		return scnAckFn(rctx, res.Error())
 	}, nil
 }
 

@@ -69,7 +69,6 @@ input:
           force_path_style_urls: ${INPUT_AWS_S3_FORCE_PATH_STYLE_URLS:false}
           prefix: ${INPUT_AWS_S3_PREFIX}
           region: ${INPUT_AWS_S3_REGION:eu-west-1}
-          retries: ${INPUT_AWS_S3_RETRIES:3}
           sqs:
             bucket_path: ${INPUT_AWS_S3_SQS_BUCKET_PATH:Records.*.s3.bucket.name}
             endpoint: ${INPUT_AWS_S3_SQS_ENDPOINT}
